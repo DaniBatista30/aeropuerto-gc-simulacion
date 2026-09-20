@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador LPA — Lado Tierra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --panel-2:#f6f8fa; --grid:#c9d3dd; --border:#d7dee6;
+  --ink:#16233a; --ink-muted:#52657c; --ink-faint:#8494a8;
+  --line:#2f6f9e; --line-soft:#dce8f0;
+  --amber:#a8681a; --amber-bg:#f7ecd9;
+  --teal:#187a6c; --teal-bg:#e2f2ee;
+  --red:#a3352d; --red-bg:#fbe6e4;
+  --radius:3px;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1620; --panel:#141f2c; --panel-2:#101923; --grid:#223047; --border:#223047;
+    --ink:#e4ecf5; --ink-muted:#93a6bb; --ink-faint:#5f7186;
+    --line:#5aa9d6; --line-soft:#152736;
+    --amber:#e0a83f; --amber-bg:#2a2213;
+    --teal:#3ddbc0; --teal-bg:#132723;
+    --red:#e2635c; --red-bg:#2a1615;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1620; --panel:#141f2c; --panel-2:#101923; --grid:#223047; --border:#223047;
+  --ink:#e4ecf5; --ink-muted:#93a6bb; --ink-faint:#5f7186;
+  --line:#5aa9d6; --line-soft:#152736;
+  --amber:#e0a83f; --amber-bg:#2a2213;
+  --teal:#3ddbc0; --teal-bg:#132723;
+  --red:#e2635c; --red-bg:#2a1615;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+html{
+  background:var(--bg);
+  scroll-padding-top:env(safe-area-inset-top,0px);
+}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size:28px 28px;
+  background-attachment:fixed;
+}
+::selection{ background:var(--line); color:#fff; }
+:focus-visible{ outline:2px solid var(--line); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce){ *{ animation-duration:0.01ms !important; transition-duration:0.01ms !important; } }
+
+.wrap{ max-width:1180px; margin:0 auto; padding:18px 16px 64px; }
+
+/* ---------- Header + pipeline ---------- */
+header.top{
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px 18px; margin-bottom:14px;
+}
+.title-row{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+h1{ font-size:1.05rem; font-weight:600; letter-spacing:0.01em; margin:0; }
+h1 small{ display:block; font-family:var(--mono); font-weight:400; color:var(--ink-muted); font-size:0.72rem; margin-top:2px; }
+.status{ font-family:var(--mono); font-size:0.72rem; color:var(--ink-muted); display:flex; align-items:center; gap:6px; }
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px var(--teal-bg); }
+
+.pipeline{ display:flex; align-items:center; margin-top:14px; overflow-x:auto; padding-bottom:2px; }
+.pnode{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:5px; min-width:74px; }
+.pnode .circ{ width:30px; height:30px; border-radius:50%; border:1.5px solid var(--line); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:0.65rem; color:var(--line); background:var(--line-soft); }
+.pnode span{ font-size:0.66rem; color:var(--ink-muted); text-align:center; line-height:1.15; }
+.pline{ flex:1 1 24px; height:1.5px; background:var(--line); opacity:0.5; min-width:14px; }
+
+/* ---------- Layout ---------- */
+.grid{ display:grid; grid-template-columns:340px 1fr; gap:14px; align-items:start; }
+@media (max-width:860px){ .grid{ grid-template-columns:1fr; } }
+
+.panel{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+.panel + .panel{ margin-top:12px; }
+.panel h2{ font-size:0.78rem; font-weight:600; margin:0 0 10px; text-transform:none; color:var(--ink); }
+
+/* ---------- Accordion inputs ---------- */
+.acc{ border:1px solid var(--border); border-radius:var(--radius); margin-bottom:8px; overflow:hidden; }
+.acc summary{ cursor:pointer; list-style:none; padding:10px 12px; font-size:0.82rem; font-weight:600; display:flex; justify-content:space-between; align-items:center; background:var(--panel-2); }
+.acc summary::-webkit-details-marker{ display:none; }
+.acc summary::after{ content:'+'; font-family:var(--mono); color:var(--ink-muted); font-weight:400; }
+.acc[open] summary::after{ content:'−'; }
+.acc .body{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:9px; }
+
+.field{ display:flex; flex-direction:column; gap:3px; }
+.field label{ font-size:0.72rem; color:var(--ink-muted); display:flex; justify-content:space-between; gap:8px; }
+.field label .hint{ color:var(--ink-faint); font-size:0.66rem; }
+.field input[type=number], .field select{
+  font-family:var(--mono); font-size:0.85rem; padding:6px 8px; border:1px solid var(--border);
+  border-radius:var(--radius); background:var(--panel-2); color:var(--ink); width:100%;
+}
+.field input[type=range]{ width:100%; accent-color:var(--line); }
+.row2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.tag-source{ font-size:0.6rem; padding:1px 5px; border-radius:2px; font-family:var(--mono); }
+.tag-source.data{ background:var(--teal-bg); color:var(--teal); }
+.tag-source.hyp{ background:var(--amber-bg); color:var(--amber); }
+
+.runbar{ position:sticky; bottom:0; background:var(--panel); border-top:1px solid var(--border); padding:10px 0 0; margin-top:4px; }
+button.run{
+  width:100%; padding:11px; border-radius:var(--radius); border:none; background:var(--line);
+  color:#fff; font-family:var(--sans); font-weight:600; font-size:0.88rem; cursor:pointer;
+}
+button.run:active{ transform:translateY(1px); }
+button.run:disabled{ opacity:0.5; cursor:default; }
+
+/* ---------- Results ---------- */
+.tiles{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+@media (max-width:560px){ .tiles{ grid-template-columns:repeat(2,1fr); } }
+.tile{ background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; }
+.tile .v{ font-family:var(--mono); font-size:1.35rem; font-weight:600; line-height:1.1; }
+.tile .l{ font-size:0.66rem; color:var(--ink-muted); margin-top:3px; }
+.tile.warn .v{ color:var(--amber); }
+.tile.bad .v{ color:var(--red); }
+.tile.ok .v{ color:var(--teal); }
+
+table.stages{ width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:4px; }
+table.stages caption{ text-align:left; font-size:0.7rem; color:var(--ink-muted); margin-bottom:6px; }
+table.stages th, table.stages td{ padding:7px 8px; border-bottom:1px solid var(--border); text-align:right; font-family:var(--mono); }
+table.stages th:first-child, table.stages td:first-child{ text-align:left; font-family:var(--sans); }
+table.stages thead th{ font-family:var(--sans); color:var(--ink-muted); font-weight:500; font-size:0.68rem; }
+table.stages tbody tr:last-child td{ border-bottom:none; }
+.los-pill{ display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.66rem; font-family:var(--sans); }
+.los-over{ background:var(--teal-bg); color:var(--teal); }
+.los-opt{ background:var(--amber-bg); color:var(--amber); }
+.los-sub{ background:var(--red-bg); color:var(--red); }
+
+.chart-wrap{ height:230px; margin-top:10px; }
+
+.refgrid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px; }
+@media (max-width:560px){ .refgrid{ grid-template-columns:1fr; } }
+.refcard{ border:1px solid var(--border); border-radius:var(--radius); padding:9px 10px; background:var(--panel-2); }
+.refcard .k{ font-size:0.65rem; color:var(--ink-muted); }
+.refcard .n{ font-family:var(--mono); font-size:1.05rem; font-weight:600; margin-top:2px; }
+
+.note{ font-size:0.72rem; color:var(--ink-muted); line-height:1.5; margin-top:10px; }
+.empty{ color:var(--ink-faint); font-size:0.82rem; padding:24px 8px; text-align:center; }
+footer.methodo{ margin-top:16px; font-size:0.68rem; color:var(--ink-faint); line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="title-row">
+      <h1>Simulador de capacidad — Lado Tierra<small>Aeropuerto de Gran Canaria · salidas · motor DES validado</small></h1>
+      <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">listo</span></div>
+    </div>
+    <div class="pipeline" id="pipeline">
+      <div class="pnode"><div class="circ">1</div><span>Facturación</span></div>
+      <div class="pline"></div>
+      <div class="pnode"><div class="circ">2</div><span>Preparación</span></div>
+      <div class="pline"></div>
+      <div class="pnode"><div class="circ">3</div><span>Arco RX</span></div>
+      <div class="pline"></div>
+      <div class="pnode"><div class="circ">4</div><span>Recomposición</span></div>
+      <div class="pline"></div>
+      <div class="pnode"><div class="circ">5</div><span>Frontera</span></div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ============ INPUTS ============ -->
+    <div>
+      <form id="inputForm">
+
+        <details class="acc" open>
+          <summary>Demanda</summary>
+          <div class="body">
+            <div class="field">
+              <label>Escenario <span class="hint">rellena PHP</span></label>
+              <select id="escenario">
+                <option value="2684">2018 — actual (TFM)</option>
+                <option value="3457">2031 — DORA III</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Pasajeros/hora, salidas <span class="tag-source data">dato</span></label>
+              <input type="number" id="phpDep" value="2684" min="100" step="any">
+            </div>
+            <div class="field">
+              <label>Duración de la hora punta (min)</label>
+              <input type="number" id="peakMin" value="60" min="15" max="180" step="any">
+            </div>
+            <div class="field">
+              <label>Réplicas (para el intervalo de confianza)</label>
+              <input type="range" id="nReps" min="5" max="30" value="12">
+              <div class="hint" style="text-align:right"><span id="nRepsVal">12</span> réplicas</div>
+            </div>
+          </div>
+        </details>
+
+        <details class="acc" open>
+          <summary>Infraestructura</summary>
+          <div class="body">
+            <div class="row2">
+              <div class="field"><label>Mostradores <span class="tag-source data">dato</span></label><input type="number" step="any" id="nMostradores" value="110" min="1"></div>
+              <div class="field"><label>Arcos RX <span class="tag-source data">dato</span></label><input type="number" step="any" id="nArcos" value="20" min="1"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>Preparación/arco</label><input type="number" step="any" id="divestPerArc" value="4" min="1"></div>
+              <div class="field"><label>Recomposición/arco</label><input type="number" step="any" id="recomposePerArc" value="4" min="1"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>Puestos ABC</label><input type="number" step="any" id="nAbc" value="4" min="0"></div>
+              <div class="field"><label>Puestos manuales</label><input type="number" step="any" id="nManual" value="4" min="0"></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="acc">
+          <summary>Comportamiento de pasajeros</summary>
+          <div class="body">
+            <div class="field"><label>% factura equipaje <span class="tag-source hyp">hipótesis</span></label><input type="number" step="any" id="pCheckin" value="55" min="0" max="100"></div>
+            <div class="field"><label>% cruza frontera (no-Schengen) <span class="tag-source data">dato</span></label><input type="number" id="pBorder" value="27.6" min="0" max="100" step="any"></div>
+            <div class="row2">
+              <div class="field"><label>% elegible e-Gate ABC</label><input type="number" step="any" id="pAbcEligible" value="65" min="0" max="100"></div>
+              <div class="field"><label>% rechazo ABC</label><input type="number" step="any" id="pAbcReject" value="6" min="0" max="100"></div>
+            </div>
+            <div class="field"><label>% registro secundario <span class="tag-source hyp">rango industria</span></label><input type="number" step="any" id="pSecondary" value="8" min="0" max="100"></div>
+            <div class="row2">
+              <div class="field"><label>% con 1 bandeja</label><input type="number" step="any" id="pTray1" value="55" min="0" max="100"></div>
+              <div class="field"><label>% con 2 bandejas</label><input type="number" step="any" id="pTray2" value="35" min="0" max="100"></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="acc">
+          <summary>Tiempos de servicio (media, s)</summary>
+          <div class="body">
+            <div class="row2"><div class="field"><label>Facturación</label><input type="number" step="any" id="checkinMean" value="76"></div>
+              <div class="field"><label>σ (facturación)</label><input type="number" id="checkinSigma" value="0.45" step="any"></div></div>
+            <div class="row2"><div class="field"><label>Preparación</label><input type="number" step="any" id="divestMean" value="52.5"></div>
+              <div class="field"><label>σ (preparación)</label><input type="number" id="divestSigma" value="0.40" step="any"></div></div>
+            <div class="row2"><div class="field"><label>RX por bandeja</label><input type="number" step="any" id="trayMean" value="12.5"></div>
+              <div class="field"><label>CV (RX)</label><input type="number" id="trayCV" value="0.25" step="any"></div></div>
+            <div class="row2"><div class="field"><label>Registro secundario</label><input type="number" step="any" id="secMean" value="75"></div>
+              <div class="field"><label>CV (secundario)</label><input type="number" id="secCV" value="0.50" step="any"></div></div>
+            <div class="row2"><div class="field"><label>Recomposición</label><input type="number" step="any" id="recomposeMean" value="75"></div>
+              <div class="field"><label>σ (recomposición)</label><input type="number" id="recomposeSigma" value="0.40" step="any"></div></div>
+            <div class="row2"><div class="field"><label>Frontera ABC</label><input type="number" step="any" id="abcMean" value="8"></div>
+              <div class="field"><label>Frontera manual</label><input type="number" step="any" id="manualMean" value="20"></div></div>
+          </div>
+        </details>
+
+        <div class="runbar">
+          <button type="submit" class="run" id="runBtn">Ejecutar simulación</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ============ OUTPUTS ============ -->
+    <div>
+      <div class="panel" id="resultsPanel">
+        <div class="empty">Ajusta los parámetros y pulsa «Ejecutar simulación».<br>Los valores por defecto son la calibración validada contra la cifra operativa de AENA.</div>
+      </div>
+
+      <div class="panel">
+        <h2>Referencia estática del filtro (se recalcula al vuelo, sin simular)</h2>
+        <div class="refgrid" id="refGrid"></div>
+      </div>
+
+      <footer class="methodo">
+        Motor de simulación de eventos discretos, puerto en JavaScript del modelo Python
+        validado del proyecto. En régimen saturado reproduce 350 pax/h por filtro doble
+        (cifra operativa de AENA) y ~175 pax/h por arco (rango de industria 150–200).
+        No modela bloqueo físico por superficie de sala: el barrido de sensibilidad del
+        proyecto mostró que, por encima de ~400 m², la superficie no cambia el resultado
+        bajo demanda real. Las etiquetas «dato» remiten a TFM/Plan Director/DORA;
+        «hipótesis» son valores no verificados y quedan a mano para ajustarlos.
+      </footer>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// MOTOR DE SIMULACIÓN (idéntico al validado en Node contra el modelo Python)
+// =====================================================================
+function mulberry32(seed){ let a=seed>>>0; return function(){ a|=0; a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
+function normalSample(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function lognormalSample(rng,mean,sigmaLog,floor){ const muLog=Math.log(mean)-0.5*sigmaLog*sigmaLog; return Math.max(floor||1, Math.exp(muLog+sigmaLog*normalSample(rng))); }
+function gammaSample(rng,shape,scale,floor){
+  const d=shape-1/3, c=1/Math.sqrt(9*d);
+  for(;;){ let x,v; do{ x=normalSample(rng); v=1+c*x; }while(v<=0); v=v*v*v; const u=rng(); const x2=x*x;
+    if(u<1-0.0331*x2*x2) return Math.max(floor||0.1, d*v*scale);
+    if(Math.log(u)<0.5*x2+d*(1-v+Math.log(v))) return Math.max(floor||0.1, d*v*scale); }
+}
+function gammaFromMeanCV(mean,cv){ return {shape:1/(cv*cv), scale:mean*cv*cv}; }
+function poissonArrivals(rng,ratePerHour,durationMin){ const meanGap=3600/ratePerHour, horizon=durationMin*60; const a=[]; let t=0; for(;;){ t+= -meanGap*Math.log(1-rng()); if(t>=horizon) break; a.push(t); } return a; }
+function runBank(items,numServers,serviceFn,rng){
+  const sorted=items.slice().sort((a,b)=>a.arrival-b.arrival);
+  const free=new Float64Array(Math.max(1,numServers)); const out=new Map();
+  for(const it of sorted){ let idx=0,best=free[0]; for(let i=1;i<free.length;i++){ if(free[i]<best){best=free[i];idx=i;} }
+    const start=Math.max(it.arrival,free[idx]); const service=serviceFn(rng); const finish=start+service;
+    free[idx]=finish; out.set(it.id,{start,finish,wait:start-it.arrival,service}); }
+  return out;
+}
+function runBankPerItem(items,numServers,serviceFn,rng){
+  const sorted=items.slice().sort((a,b)=>a.arrival-b.arrival);
+  const free=new Float64Array(Math.max(1,numServers)); const out=new Map();
+  for(const it of sorted){ let idx=0,best=free[0]; for(let i=1;i<free.length;i++){ if(free[i]<best){best=free[i];idx=i;} }
+    const start=Math.max(it.arrival,free[idx]); const service=serviceFn(it,rng); const finish=start+service;
+    free[idx]=finish; out.set(it.id,{start,finish,wait:start-it.arrival,service}); }
+  return out;
+}
+function pct(arr,q){ if(!arr.length) return NaN; const s=arr.slice().sort((a,b)=>a-b); const h=(s.length-1)*q; const lo=Math.floor(h),hi=Math.ceil(h); return s[lo]+(h-lo)*(s[hi]-s[lo]); }
+
+function runReplica(cfg, seed){
+  const rng=mulberry32(seed);
+  const arrivals=poissonArrivals(rng,cfg.phpDep,cfg.peakMin);
+  const N=arrivals.length;
+  const pax=arrivals.map((t,i)=>({id:i, arrivalSystem:t}));
+
+  const checkinItems=[]; for(const p of pax){ if(rng()<cfg.pCheckin) checkinItems.push({id:p.id,arrival:p.arrivalSystem}); }
+  const checkinRes=runBank(checkinItems, cfg.nMostradores, r=>lognormalSample(r,cfg.checkinMean,cfg.checkinSigma,5), rng);
+
+  const toDivest=pax.map(p=>{ const c=checkinRes.get(p.id); return {id:p.id, arrival: c?c.finish:p.arrivalSystem}; });
+  const divestServers=cfg.nArcos*cfg.divestPerArc;
+  const divestRes=runBank(toDivest, divestServers, r=>lognormalSample(r,cfg.divestMean,cfg.divestSigma,5), rng);
+
+  const trayShape=gammaFromMeanCV(cfg.trayMean,cfg.trayCV);
+  const nTraysOf=new Map();
+  const toScreen=pax.map(p=>{ const d=divestRes.get(p.id); const u=rng(); let n=1; if(u>cfg.pTray1) n=(u>cfg.pTray1+cfg.pTray2)?3:2; nTraysOf.set(p.id,n); return {id:p.id, arrival:d.finish}; });
+  const screenRes=runBankPerItem(toScreen, cfg.nArcos, (it,r)=>{ const n=nTraysOf.get(it.id); let s=0; for(let k=0;k<n;k++) s+=gammaSample(r,trayShape.shape,trayShape.scale,1); return s; }, rng);
+
+  const secShape=gammaFromMeanCV(cfg.secMean,cfg.secCV);
+  const secondaryIds=new Set(); for(const p of pax){ if(rng()<cfg.pSecondary) secondaryIds.add(p.id); }
+  const toSecondary=[]; for(const p of pax){ if(secondaryIds.has(p.id)) toSecondary.push({id:p.id, arrival:screenRes.get(p.id).finish}); }
+  const secRes=runBank(toSecondary, Math.max(1,Math.round(cfg.nArcos*0.25)), r=>gammaSample(r,secShape.shape,secShape.scale,5), rng);
+
+  const toRecompose=pax.map(p=>{ if(secondaryIds.has(p.id)) return {id:p.id, arrival:secRes.get(p.id).finish}; return {id:p.id, arrival:screenRes.get(p.id).finish}; });
+  const recomposeServers=cfg.nArcos*cfg.recomposePerArc;
+  const recomposeRes=runBank(toRecompose, recomposeServers, r=>lognormalSample(r,cfg.recomposeMean,cfg.recomposeSigma,5), rng);
+
+  const borderIds=new Set(); for(const p of pax){ if(rng()<cfg.pBorder) borderIds.add(p.id); }
+  const toAbc=[], toManualDirect=[];
+  for(const id of borderIds){ const r0=recomposeRes.get(id); if(rng()<cfg.pAbcEligible) toAbc.push({id,arrival:r0.finish}); else toManualDirect.push({id,arrival:r0.finish}); }
+  const abcShape=gammaFromMeanCV(cfg.abcMean,cfg.abcCV||0.30);
+  const abcRes=runBank(toAbc, cfg.nAbc, r=>gammaSample(r,abcShape.shape,abcShape.scale,2), rng);
+  const rejectedToManual=[]; const abcExit=new Map();
+  for(const it of toAbc){ const a=abcRes.get(it.id); if(rng()<cfg.pAbcReject) rejectedToManual.push({id:it.id,arrival:a.finish}); else abcExit.set(it.id,a.finish); }
+  const manualItems=toManualDirect.concat(rejectedToManual);
+  const manualRes=runBank(manualItems, cfg.nManual, r=>lognormalSample(r,cfg.manualMean,cfg.manualSigma||0.40,5), rng);
+
+  const exitOf=new Map();
+  for(const p of pax){ if(borderIds.has(p.id)){ exitOf.set(p.id, abcExit.has(p.id)?abcExit.get(p.id):manualRes.get(p.id).finish); } else { exitOf.set(p.id, recomposeRes.get(p.id).finish); } }
+
+  const waitCheckin=[...checkinRes.values()].map(v=>v.wait/60);
+  const waitSecurity=pax.map(p=>{ const d=divestRes.get(p.id), s=screenRes.get(p.id); return (d.wait+d.service+s.wait)/60; });
+  const waitBorder=[]; for(const id of borderIds){ const inAbc=toAbc.find(x=>x.id===id); if(inAbc) waitBorder.push(abcRes.get(id).wait/60 + (manualRes.get(id)?manualRes.get(id).wait/60:0)); else waitBorder.push(manualRes.get(id).wait/60); }
+
+  const peakSec=cfg.peakMin*60;
+  const exits=[...exitOf.values()];
+  const remanente=exits.filter(e=>e>peakSec).length;
+  const procesadosVentana=exits.filter(e=>e<=peakSec).length;
+  const vaciadoMin=Math.max(0,(Math.max(...exits,peakSec)-peakSec)/60);
+
+  function busy(res){ let s=0; for(const v of res.values()) s+=v.service; return s; }
+  const utilCheckin=busy(checkinRes)/(cfg.nMostradores*peakSec);
+  const utilScreen=busy(screenRes)/(cfg.nArcos*peakSec);
+  const utilDivest=busy(divestRes)/(divestServers*peakSec);
+
+  return {
+    N, remanente, procesadosVentana, vaciadoMin,
+    utilCheckin, utilScreen, utilDivest,
+    chk:{mean:mean(waitCheckin),p50:pct(waitCheckin,0.5),p95:pct(waitCheckin,0.95),p99:pct(waitCheckin,0.99)},
+    sec:{mean:mean(waitSecurity),p50:pct(waitSecurity,0.5),p95:pct(waitSecurity,0.95),p99:pct(waitSecurity,0.99)},
+    bor:{mean:mean(waitBorder),p50:pct(waitBorder,0.5),p95:pct(waitBorder,0.95),p99:pct(waitBorder,0.99)},
+    throughputPaxH: procesadosVentana/(cfg.peakMin/60),
+  };
+}
+function mean(a){ return a.length? a.reduce((x,y)=>x+y,0)/a.length : NaN; }
+
+// t crítico dos colas, alpha=0.05
+const T_TABLE=[NaN,12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228,2.201,2.179,2.160,2.145,2.131,2.120,2.110,2.101,2.093,2.086,2.080,2.074,2.069,2.064,2.060,2.056,2.052,2.048,2.045,2.042];
+function tCrit(df){ if(df<1) return 12.706; if(df<=30) return T_TABLE[df]; return 1.96; }
+function ciOf(values){
+  const v=values.filter(x=>Number.isFinite(x));
+  if(v.length<2) return {mean:v[0]||NaN, half:0};
+  const m=mean(v); const sd=Math.sqrt(v.reduce((s,x)=>s+(x-m)*(x-m),0)/(v.length-1));
+  return {mean:m, half: tCrit(v.length-1)*sd/Math.sqrt(v.length)};
+}
+
+// =====================================================================
+// UI
+// =====================================================================
+const $=id=>document.getElementById(id);
+const STORAGE_KEY='lpa-sim-inputs-v1';
+const inputIds=['phpDep','peakMin','nReps','nMostradores','nArcos','divestPerArc','recomposePerArc','nAbc','nManual',
+  'pCheckin','pBorder','pAbcEligible','pAbcReject','pSecondary','pTray1','pTray2',
+  'checkinMean','checkinSigma','divestMean','divestSigma','trayMean','trayCV','secMean','secCV','recomposeMean','recomposeSigma','abcMean','manualMean'];
+
+function saveInputs(){
+  try{
+    const data={}; for(const id of inputIds) data[id]=$(id).value;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }catch(e){ /* almacenamiento no disponible: se ignora */ }
+}
+function loadInputs(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return;
+    const data=JSON.parse(raw);
+    for(const id of inputIds){ if(data[id]!==undefined && $(id)) $(id).value=data[id]; }
+  }catch(e){ /* sin datos guardados o storage no disponible */ }
+}
+loadInputs();
+
+$('nReps').addEventListener('input', ()=>{ $('nRepsVal').textContent=$('nReps').value; });
+$('nRepsVal').textContent=$('nReps').value;
+
+$('escenario').addEventListener('change', ()=>{
+  const v=$('escenario').value;
+  if(v!=='custom') $('phpDep').value=v;
+});
+
+function readCfg(){
+  const f=id=>parseFloat($(id).value);
+  return {
+    phpDep:f('phpDep'), peakMin:f('peakMin'), nReps: parseInt($('nReps').value,10),
+    nMostradores:f('nMostradores'), nArcos:f('nArcos'), divestPerArc:f('divestPerArc'), recomposePerArc:f('recomposePerArc'),
+    nAbc:f('nAbc'), nManual:f('nManual'),
+    pCheckin:f('pCheckin')/100, pBorder:f('pBorder')/100, pAbcEligible:f('pAbcEligible')/100, pAbcReject:f('pAbcReject')/100,
+    pSecondary:f('pSecondary')/100, pTray1:f('pTray1')/100, pTray2:f('pTray2')/100,
+    checkinMean:f('checkinMean'), checkinSigma:f('checkinSigma'),
+    divestMean:f('divestMean'), divestSigma:f('divestSigma'),
+    trayMean:f('trayMean'), trayCV:f('trayCV'),
+    secMean:f('secMean'), secCV:f('secCV'),
+    recomposeMean:f('recomposeMean'), recomposeSigma:f('recomposeSigma'),
+    abcMean:f('abcMean'), abcCV:0.30, manualMean:f('manualMean'), manualSigma:0.40,
+  };
+}
+
+function losClass(p95min){
+  if(!Number.isFinite(p95min)) return {cls:'los-opt', txt:'—'};
+  if(p95min<5) return {cls:'los-over', txt:'Over-design'};
+  if(p95min<=10) return {cls:'los-opt', txt:'Optimum'};
+  return {cls:'los-sub', txt:'Sub-optimum'};
+}
+
+function updateRefPanel(){
+  const cfg=readCfg();
+  const meanTrays=1*cfg.pTray1 + 2*cfg.pTray2 + 3*(1-cfg.pTray1-cfg.pTray2);
+  const capArc=3600/(meanTrays*cfg.trayMean);
+  const capFiltro=capArc*2;
+  const grid=$('refGrid');
+  grid.innerHTML=`
+    <div class="refcard"><div class="k">Bandejas medias / pax</div><div class="n">${meanTrays.toFixed(2)}</div></div>
+    <div class="refcard"><div class="k">Capacidad teórica / arco</div><div class="n">${capArc.toFixed(0)} pax/h</div></div>
+    <div class="refcard"><div class="k">Capacidad teórica / filtro doble</div><div class="n">${capFiltro.toFixed(0)} pax/h</div></div>
+    <div class="refcard"><div class="k">Rango de industria / arco</div><div class="n">150 – 200</div></div>
+    <div class="refcard"><div class="k">Referencia AENA / filtro</div><div class="n">350 pax/h</div></div>
+    <div class="refcard"><div class="k">Nº arcos configurados</div><div class="n">${cfg.nArcos}</div></div>
+  `;
+}
+document.querySelectorAll('#inputForm input, #inputForm select').forEach(el=>el.addEventListener('input', updateRefPanel));
+updateRefPanel();
+
+let chartRef=null;
+function fmt(x){ return (x && Number.isFinite(x.mean)) ? `${x.mean.toFixed(2)} ± ${x.half.toFixed(2)}` : '—'; }
+function pctFmt(v){ return Number.isFinite(v) ? (100*v).toFixed(0)+'%' : '—'; }
+
+function renderResults(agg){
+  const p=$('resultsPanel');
+  const los=losClass(agg.secP95.mean);
+  const remPct = 100*agg.remanentePct.mean;
+  const remTile = remPct>15 ? 'bad' : (remPct>2 ? 'warn' : 'ok');
+  const vacTile = agg.vaciado.mean>5 ? 'warn' : 'ok';
+
+  p.innerHTML = `
+    <h2 style="margin-bottom:8px">Resultado — ${agg.nReps} réplicas, IC 95%</h2>
+    <div class="tiles">
+      <div class="tile"><div class="v">${agg.N.mean.toFixed(0)}</div><div class="l">generados en la punta</div></div>
+      <div class="tile"><div class="v">${agg.procesados.mean.toFixed(0)}</div><div class="l">procesados en la punta</div></div>
+      <div class="tile ${remTile}"><div class="v">${remPct.toFixed(1)}%</div><div class="l">remanente al final de la punta</div></div>
+      <div class="tile ${vacTile}"><div class="v">+${agg.vaciado.mean.toFixed(1)}</div><div class="l">min hasta vaciado total</div></div>
+    </div>
+
+    <table class="stages">
+      <caption>Espera por etapa (minutos), media ± semiamplitud del IC</caption>
+      <thead><tr><th>Etapa</th><th>Media</th><th>P50</th><th>P95</th><th>P99</th><th>Utiliz.</th><th>Nivel de servicio</th></tr></thead>
+      <tbody>
+        <tr><td>Facturación</td><td>${fmt(agg.chkMean)}</td><td>${fmt(agg.chkP50)}</td><td>${fmt(agg.chkP95)}</td><td>${fmt(agg.chkP99)}</td><td>${pctFmt(agg.utilCheckin.mean)}</td><td>—</td></tr>
+        <tr><td>Filtro de seguridad</td><td>${fmt(agg.secMean)}</td><td>${fmt(agg.secP50)}</td><td>${fmt(agg.secP95)}</td><td>${fmt(agg.secP99)}</td><td>${pctFmt(agg.utilScreen.mean)}</td><td><span class="los-pill ${los.cls}">${los.txt}</span></td></tr>
+        <tr><td>Control de fronteras</td><td>${fmt(agg.borMean)}</td><td>${fmt(agg.borP50)}</td><td>${fmt(agg.borP95)}</td><td>${fmt(agg.borP99)}</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <div class="chart-wrap"><canvas id="waitChart"></canvas></div>
+  `;
+
+  // El gráfico es un complemento visual: si Chart.js no ha podido cargar
+  // (red lenta, bloqueador, etc.) el resto de resultados no debe perderse.
+  try{
+    if(typeof Chart === 'undefined') throw new Error('Chart.js no disponible');
+    const ctx=document.getElementById('waitChart');
+    if(chartRef) chartRef.destroy();
+    const styles=getComputedStyle(document.documentElement);
+    const ink=styles.getPropertyValue('--ink').trim();
+    const gridColor=styles.getPropertyValue('--border').trim();
+    chartRef = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels:['Facturación','Filtro de seguridad','Fronteras'],
+        datasets:[
+          {label:'P50', data:[agg.chkP50.mean,agg.secP50.mean,agg.borP50.mean], backgroundColor:'#5aa9d6'},
+          {label:'P95', data:[agg.chkP95.mean,agg.secP95.mean,agg.borP95.mean], backgroundColor:'#e0a83f'},
+          {label:'P99', data:[agg.chkP99.mean,agg.secP99.mean,agg.borP99.mean], backgroundColor:'#e2635c'},
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        scales:{ y:{ beginAtZero:true, title:{display:true,text:'minutos',color:ink}, ticks:{color:ink}, grid:{color:gridColor} },
+                 x:{ ticks:{color:ink}, grid:{display:false} } },
+        plugins:{ legend:{ labels:{ color:ink } } }
+      }
+    });
+  }catch(e){
+    document.getElementById('waitChart').outerHTML =
+      '<div class="empty">Gráfico no disponible (fallo al cargar Chart.js); los datos de la tabla son correctos.</div>';
+  }
+}
+
+function aggregate(results, nReps){
+  function col(pathFn){ return ciOf(results.map(pathFn)); }
+  return {
+    N: col(r=>r.N), procesados: col(r=>r.procesadosVentana), vaciado: col(r=>r.vaciadoMin),
+    remanentePct: col(r=>r.N>0? r.remanente/r.N : 0),
+    utilCheckin: col(r=>r.utilCheckin), utilScreen: col(r=>r.utilScreen), utilDivest: col(r=>r.utilDivest),
+    chkMean: col(r=>r.chk.mean), chkP50: col(r=>r.chk.p50), chkP95: col(r=>r.chk.p95), chkP99: col(r=>r.chk.p99),
+    secMean: col(r=>r.sec.mean), secP50: col(r=>r.sec.p50), secP95: col(r=>r.sec.p95), secP99: col(r=>r.sec.p99),
+    borMean: col(r=>r.bor.mean), borP50: col(r=>r.bor.p50), borP95: col(r=>r.bor.p95), borP99: col(r=>r.bor.p99),
+    nReps,
+  };
+}
+
+$('inputForm').addEventListener('submit', (ev)=>{
+  ev.preventDefault();
+  saveInputs();
+  const btn=$('runBtn'); btn.disabled=true; btn.textContent='Simulando…';
+  $('statusText').textContent='ejecutando'; $('statusDot').style.background='var(--amber)';
+
+  setTimeout(()=>{
+    try{
+      const cfg=readCfg();
+      const nReps=Math.max(2, Math.round(cfg.nReps));
+      const results=[];
+      const baseSeed = 20260920;
+      for(let i=0;i<nReps;i++) results.push(runReplica(cfg, baseSeed + i*104729));
+      const agg=aggregate(results, nReps);
+      renderResults(agg);
+      $('statusText').textContent='listo'; $('statusDot').style.background='var(--teal)';
+    }catch(err){
+      $('resultsPanel').innerHTML = `<div class="empty" style="color:var(--red)">Error al simular: ${String(err.message||err)}</div>`;
+      $('statusText').textContent='error'; $('statusDot').style.background='var(--red)';
+    }finally{
+      btn.disabled=false; btn.textContent='Ejecutar simulación';
+    }
+  }, 30);
+});
+</script>
+</body>
+</html>
