@@ -310,3 +310,91 @@ son independientes entre sí y el modelo satisface ambas.
 
 **El filtro está validado.** Deja de ser una hipótesis y pasa a ser un modelo
 contrastado contra el dato del gestor.
+
+---
+
+# Ampliación a llegadas: frontera, equipajes y aduanas
+
+## Por qué llegadas no es salidas al revés
+
+Salidas es llegada continua (Poisson razonable). **Llegadas es un proceso por
+lotes**: un vuelo aterriza y 150-200 personas aparecen a la vez. Además
+aparece un recurso sin equivalente en salidas: el equipaje viaja por un
+sistema propio (tiempo de primera maleta + tasa de entrega), y el pasajero no
+sale hasta que su maleta llega, no cuando él quiere.
+
+## Corrección metodológica: remanente, no espera media
+
+Un primer intento simuló una demanda sostenida durante 120 minutos sobre un
+recurso deficitario (2 de 4 puestos de frontera operativos). Resultado:
+esperas medias de 105 minutos, P95 de más de 3 horas. **Cifra descartada**:
+cuando la capacidad es permanentemente menor que la demanda, la cola crece sin
+límite cuanto más tiempo se sostenga la simulación, y el número final depende
+de cuánto rato se decida simular, no de la realidad operativa.
+
+La lectura correcta de un recurso deficitario no es "espera media", es
+**remanente al final de la hora punta** y **tiempo de vaciado**: se programan
+vuelos durante 60 minutos exactos y se deja correr el sistema hasta que se
+vacía por completo.
+
+## Dos lecturas de la demanda, nunca mezcladas
+
+El TFM calcula la hora punta de cada tráfico por separado, y esos picos NO son
+simultáneos: la suma (3.485 pax/h) supera el PHP total observado de llegadas
+(2.146 pax/h). Factor de no-coincidencia: **0,62**.
+
+- **Escenario DISEÑO** (factor 1,0): los picos se solapan por completo. Es el
+  supuesto que usa el propio TFM al dimensionar instalaciones compartidas — un
+  techo conservador, no una hora observada.
+- **Escenario OBSERVADO** (factor 0,62): reproduce el PHP real de 2.146 pax/h.
+
+## Resultado del contraste estático (TFM) — ya había un déficit documentado
+
+| Instalación | Capacidad | Demanda | Ratio | Estado |
+|---|---|---|---|---|
+| Frontera, 4 puestos instalados | 873 | 848 | 1,03 | Al límite |
+| **Frontera, 2 puestos operativos** | **436** | **848** | **0,51** | **Déficit** |
+| Aduanas (47 m²) | 732 | 848 | 0,86 | Déficit |
+| Las tres salas de recogida | — | — | 2,5–15,9 | Holgadas |
+| Ambos vestíbulos | — | — | 1,7–3,0 | Holgados |
+
+**El déficit de frontera y aduanas ya estaba en el TFM.** El modelo dinámico
+no lo inventa: lo confirma y le añade una dimensión temporal que la fórmula
+estática no puede dar.
+
+## Resultado del modelo dinámico
+
+| | Diseño (picos sumados) | Observado (PHP real) |
+|---|---|---|
+| Frontera, P95 espera | 55,3 min | 16,8 min |
+| Remanente al final de la punta | **20,6 %** de los pasajeros | **14,8 %** |
+| Tiempo hasta vaciado total | +117 min | +57 min |
+
+Incluso en el escenario **observado** —el real, no el conservador—, con solo
+2 puestos de control de pasaportes operativos, **1 de cada 7 pasajeros de la
+hora punta sigue en cola cuando ésta ha terminado**, y el sistema tarda casi
+una hora más en vaciarse. Con los 4 puestos instalados (capacidad 873 vs
+demanda 848, ratio 1,03) el margen sería mínimo pero positivo.
+
+**Esto es un hallazgo operativo, no una debilidad del modelo**: la brecha
+entre puestos instalados y puestos operativos cuesta, en el escenario real,
+cerca de una hora de cola remanente por cada hora punta.
+
+## Brecha declarada
+
+`customs_positions = 2` es una **hipótesis del modelo, no un dato de fuente**.
+El TFM da los puestos *necesarios* (5) pero no dice, como sí hace con
+fronteras, cuántos están operativos hoy. Se ha asumido 2 por similitud
+operativa con fronteras; debe verificarse con el gestor antes de un informe.
+
+## Instalaciones (TFM, superficies medidas sobre planos)
+
+| Zona | m² | Unidades |
+|---|---|---|
+| Sala de recogida Internacional | 1.868 | 3 hipódromos |
+| Sala de recogida Europea | 4.985 | 10 hipódromos |
+| Sala de recogida Nacional | 3.275 | 5 hipódromos |
+| Frontera de llegadas | 1.385 | 4 puestos (2 operativos) |
+| Aduanas | 47 | — |
+| Vestíbulo Norte (nacional + interinsular) | 1.879 | — |
+| Vestíbulo Sur (UE + internacional) | 1.279 | — |
