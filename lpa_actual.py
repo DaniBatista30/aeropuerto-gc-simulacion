@@ -276,6 +276,7 @@ def config_lpa_2018(
     n_check_in_desks: int = TOTAL_CHECKIN_DESKS,
     pax_php: float = float(PHP_2018.departures),
     n_passengers: int = 2684,
+    divest_positions_per_lane: int = 4,
     scenario_name: Optional[str] = None,
 ) -> TerminalConfig:
     """
@@ -290,6 +291,13 @@ def config_lpa_2018(
       * 2.684 pax/h de salidas en hora punta (TFM, datos 2018).
       * Tiempo de facturación 76 s (UE, el tráfico dominante).
       * `security_area_m2` NO es un dato: es el parámetro a barrer.
+      * `divest_positions_per_lane=4`: el DEFAULT de la clase TerminalConfig
+        es 3, no el valor validado. Se fija aquí explícitamente para que
+        cualquier análisis que use esta función parta de la configuración
+        que reprodujo los 350 pax/h de AENA, sin depender de que quien llama
+        recuerde sobrescribirlo (error real cometido una vez en este mismo
+        proyecto: sin este override, el P95 de seguridad sale ~9 min en vez
+        de ~1,7 min a demanda real, por infra-aprovisionar la preparación).
     """
     # Fracción de pasajeros de salida que cruza frontera: 740 de 2.684.
     p_schengen = 1.0 - PHP_2018.passport_departures / PHP_2018.departures
@@ -300,6 +308,7 @@ def config_lpa_2018(
             f"{security_area_m2:.0f} m2"),
         n_check_in_desks=n_check_in_desks,
         n_security_lanes=n_arcos,   # ARCOS, no filtros
+        divest_positions_per_lane=divest_positions_per_lane,
         n_abc_gates=4,
         n_manual_booths=PASSPORT_BOOTHS_P1 - 4,
         zones=security_zone_layout(security_area_m2),

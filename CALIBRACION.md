@@ -398,3 +398,134 @@ operativa con fronteras; debe verificarse con el gestor antes de un informe.
 | Aduanas | 47 | — |
 | Vestíbulo Norte (nacional + interinsular) | 1.879 | — |
 | Vestíbulo Sur (UE + internacional) | 1.279 | — |
+
+---
+
+# Barrido de sensibilidad: superficie del filtro de seguridad
+
+## Método
+
+Superficie barrida de 200 a 3.000 m², 12 réplicas independientes por punto,
+mismas semillas en cada punto (para que la diferencia entre superficies no se
+confunda con ruido muestral). Dos regímenes:
+
+1. **Límite físico**: demanda saturante (9.000 pax/h) para medir el caudal
+   sostenido en ventana estable, al margen de cuánta gente quiera entrar.
+2. **Escenarios reales**: demanda de 2019 observada (2.684 pax/h) y del
+   DORA III a 2031 (3.457 pax/h).
+
+## Resultado 1 — El caudal no depende de la superficie, casi en ningún punto
+
+| Superficie | Caudal sostenido | Bloqueados |
+|---|---|---|
+| 200 m² | 3.437 pax/h | 91,3 % |
+| 300 m² | 3.624 pax/h | 87,9 % |
+| 400–3.000 m² | **3.635 pax/h (plano)** | 84,5 % → **0 %** |
+
+El caudal se estabiliza ya a partir de 300-400 m²: por encima, el cuello de
+botella es el arco de rayos X, no el espacio disponible. **Esto confirma la
+intuición inicial.**
+
+## Resultado 2 — Pero el bloqueo SÍ depende de la superficie, en todo el rango
+
+Esto es lo que la prueba informal anterior no vio. Aunque el caudal es plano
+desde 300 m², el **porcentaje de pasajeros que sufren bloqueo aguas arriba**
+(spill-back hacia facturación) cae de forma continua en todo el rango barrido,
+sin estabilizarse hasta los 3.000 m²:
+
+```
+200 m²  → 91 % bloqueados
+1.000 m² → 64 %
+2.000 m² → 31 %
+3.000 m² → 0 %
+```
+
+**Conclusión matizada:** la superficie no determina cuánta gente puede pasar
+por hora, pero sí determina si esa gente lo hace formando un atasco visible
+hacia el vestíbulo de facturación o de forma fluida. Un caudal correcto con
+un vestíbulo colapsado no es un buen resultado operativo, aunque el número de
+"pasajeros por hora" sea idéntico.
+
+## Resultado 3 — Bajo demanda REAL, la superficie deja de importar por completo
+
+| Superficie | 2019 (2.684 pax/h) — P95 | 2031 DORA III (3.457 pax/h) — P95 |
+|---|---|---|
+| 200 m² | 1,57 min | 3,64 min |
+| 300 m² | 1,57 min | 1,78 min |
+| **400 m² en adelante** | **1,57 min (plano)** | **1,69 min (plano)** |
+
+Con demanda de 2019, el resultado es idéntico en todo el rango: la superficie
+es irrelevante porque el sistema nunca se acerca a su límite físico. Con la
+demanda del DORA III a 2031, sólo por debajo de 300-400 m² aparece un efecto
+(P95 de 3,6 min y un 32 % de bloqueo a 200 m²); a partir de 400 m² el
+resultado también es plano.
+
+## Veredicto
+
+**Bajo cualquier demanda prevista hasta 2031, la superficie del filtro de
+seguridad deja de ser un dato crítico a partir de aproximadamente 400 m².**
+Como cualquier estimación razonable del recinto de LPA (a partir del área
+total del vestíbulo de salidas, 13.000 m² según el TFM) supera con holgura
+ese umbral, el estudio puede prescindir de este dato sin perder validez.
+
+La única situación en la que sí sería necesario obtenerlo con precisión es
+para modelar densidades de aglomeración por debajo de 400 m², que no
+corresponde a ningún escenario de demanda documentado para LPA.
+
+---
+
+# Etapa de puertas QR (verificación de tarjeta de embarque)
+
+## Contexto
+
+Aportado por el usuario, con conocimiento directo del aeropuerto: antes del
+serpentín de seguridad hay unas puertas que escanean el QR de la tarjeta de
+embarque y dan paso al pasillo. Esta etapa **no estaba en el modelo
+validado**, que empezaba directamente en la zona de encolamiento.
+
+No es un problema de geometría peatonal: una puerta que escanea un código y
+se abre es un servidor con un tiempo de servicio, igual que un mostrador o un
+arco. Encaja en el mismo modelo de colas como una etapa más, sin necesidad de
+simular cómo camina la gente. Implementada como extensión no invasiva
+(`lpa_puertas.py`, subclase `GatedTerminalModel`) que no modifica el modelo
+validado.
+
+Nº de puertas: dato incierto (el usuario estima 4-10). Se barre el rango en
+vez de fijar un valor, mismo criterio que con la superficie del filtro.
+Tiempo de servicio: 3 s de media — **hipótesis**, rango de industria para
+lectores de QR/embarque; no hay dato de LPA.
+
+## Efecto colateral: un fallo real encontrado al construir esta prueba
+
+Al montar el barrido, el P95 de seguridad salió en 9,5 minutos en vez de los
+1,69 min validados. La causa no eran las puertas: `config_lpa_2018()` no
+fijaba `divest_positions_per_lane`, y el valor por defecto de la clase
+(`TerminalConfig.divest_positions_per_lane = 3`) es **distinto** del que se
+usó para validar el filtro contra AENA (4). Los análisis que llamaron a
+`config_lpa_2018()` sin pasar `divest_positions_per_lane=4` explícitamente
+—como el primer intento de este mismo barrido— heredaban una preparación
+infra-aprovisionada sin que nada lo avisara.
+
+**Corregido**: `config_lpa_2018()` fija ahora `divest_positions_per_lane=4`
+por defecto. Cualquier análisis futuro que use esta función parte de la
+configuración validada sin depender de que quien la llama lo recuerde.
+
+## Resultado del barrido
+
+| Nº puertas | Espera media (2019) | Espera media (2031 DORA III) | Capacidad teórica |
+|---|---|---|---|
+| 3 | 0,021 min | 0,170 min | 3.600 pax/h |
+| 4 | 0,004 min | 0,011 min | 4.800 pax/h |
+| 6 en adelante | ~0,000 min | ~0,000 min | ≥7.200 pax/h |
+
+Con la estimación del usuario (4 a 10 puertas), la espera en la puerta es
+**irrelevante** bajo cualquier demanda prevista hasta 2031: milésimas de
+minuto de media, y el P95 de seguridad no se mueve (1,57 y 1,69 min, iguales
+que sin la etapa). Con solo 3 puertas empezaría a notarse levemente, pero
+sigue siendo un efecto menor comparado con el propio filtro.
+
+**Veredicto**: la etapa de puertas QR es real y ahora está en el modelo, pero
+con el rango de puertas que describe el usuario no es el cuello de botella.
+El resultado depende del tiempo de servicio asumido (3 s, hipótesis): si en
+la práctica el escaneo tardara notablemente más, la conclusión podría
+cambiar y merecería remedirse.
