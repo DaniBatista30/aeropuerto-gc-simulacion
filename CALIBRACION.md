@@ -242,3 +242,71 @@ La **superficie del recinto de control de seguridad**. No figura en el Plan
 Director, ni en el TFM, ni en el DORA III. Se resuelve por barrido de
 sensibilidad, no por estimación — y el barrido preliminar ya sugiere que en
 este caso no es el parámetro crítico.
+
+---
+
+# Calibración del filtro y validación contra AENA
+
+## Parámetros adoptados (rangos de industria)
+
+| Etapa | Ley | Media | P1 / P99 |
+|---|---|---|---|
+| Preparación (divest) | Lognormal, σ=0,40 | 52,5 s | 19 s / 123 s |
+| Rayos X | Gamma, CV=0,25 | 12,5 s **por bandeja** | — |
+| Bandejas por pasajero | Discreta (55/35/10 %) | 1,55 | 1 / 3 |
+| Recomposición (repack) | Lognormal, σ=0,40 | 75 s | 27 s / 176 s |
+
+Los mínimos y máximos citados en la literatura (20/120 s en divest, 30 s en
+repack) se reproducen como percentiles 1 y 99 de la Lognormal. Eso permite
+usar una ley con cola pesada en vez de una triangular, sin perder el anclaje
+en los valores publicados.
+
+**Nota de atribución.** Estos rangos son de industria. No deben citarse como
+estándar IATA ni ECAC sin tener a mano el documento, la edición y el párrafo:
+el Doc 30 de ECAC es normativa de seguridad (qué inspeccionar y con qué
+estándares de detección), no una fuente de tiempos de servicio.
+
+## Posiciones por arco
+
+| Etapa | Posiciones | Caudal por arco |
+|---|---|---|
+| Preparación | 4 | 274 pax/h |
+| Rayos X | 1 (el arco) | **186 pax/h** ← limita |
+| Recomposición | 4 | 192 pax/h |
+
+Con 3 posiciones de recomposición el caudal cae a 144 pax/h y estrangula el
+arco por debajo del rango de industria. Hacen falta 4.
+
+## Tres errores corregidos
+
+**1. Arcos contados como filtros.** El TFM describe 20 unidades de inspección
+como 10 filtros dobles. El modelo contaba 10 servidores donde hay 20. Origen
+del factor 2,2 inicial.
+
+**2. Registro secundario dentro del arco.** El modelo bloqueaba el arco durante
+el cacheo (8 % de pasajeros × 75 s). En la práctica se hace en una mesa lateral.
+Corregirlo devolvió un 27 % de caudal.
+
+**3. El caudal se medía mal.** El KPI dividía pasajeros entre horizonte total,
+incluyendo la rampa inicial y el vaciado final, en los que el sistema no está
+saturado. Hay que medir el **caudal sostenido** en la ventana saturada.
+
+## Resultado de la validación
+
+Sistema inundado (9.000 pax/h) para forzar la saturación, caudal sostenido
+medido entre los minutos 12 y 45:
+
+| | pax/h |
+|---|---|
+| Caudal sostenido del filtro | **3.593** |
+| Por arco (20) | **180** (industria: 150–200 ✓) |
+| Por filtro doble (10) | **359** |
+| Cifra de AENA | 350 |
+| **Desviación** | **+2,6 %** |
+
+El modelo reproduce la cifra de gestión de AENA con un 2,6 % de desviación, y
+simultáneamente cae dentro del rango de industria por arco. Las dos referencias
+son independientes entre sí y el modelo satisface ambas.
+
+**El filtro está validado.** Deja de ser una hipótesis y pasa a ser un modelo
+contrastado contra el dato del gestor.

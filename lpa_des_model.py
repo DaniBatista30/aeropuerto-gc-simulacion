@@ -484,8 +484,15 @@ class TerminalConfig:
     # --- Recursos ------------------------------------------------------------
     n_check_in_desks: int = 16
     n_security_lanes: int = 4
+    # OJO: `n_security_lanes` cuenta ARCOS (unidades de inspección), no
+    # "filtros". En LPA, 20 unidades = 10 filtros dobles -> n_security_lanes=20.
+    # El registro secundario NO se hace en el arco, sino en una mesa lateral.
+    # Modelarlo dentro del arco lo bloquea y hunde el caudal un 27%.
+    secondary_positions_per_lane: float = 0.25
     divest_positions_per_lane: int = 3
-    recompose_positions_per_lane: int = 3
+    # 4 posiciones, no 3: con recomposición de 75 s, 3 posiciones rinden
+    # 144 pax/h y estrangulan el arco por debajo del rango de industria.
+    recompose_positions_per_lane: int = 4
     n_abc_gates: int = 6
     n_manual_booths: int = 4
 
@@ -501,10 +508,17 @@ class TerminalConfig:
 
     # --- Leyes de servicio ---------------------------------------------------
     dist_check_in: ServiceTimeDistribution = LognormalService(mean_s=150.0, sigma_log=0.45)
-    dist_divest: ServiceTimeDistribution = GammaService(mean_s=40.0, cv=0.45)
-    dist_screening: ServiceTimeDistribution = GammaService(mean_s=15.0, cv=0.30)
+    # Preparación: rango de industria 20 s (mín) / 45-60 s (media) / 120 s (máx).
+    # Con media 52,5 s y sigma_log 0,40 la Lognormal reproduce ese mínimo y ese
+    # máximo como percentiles 1 y 99 (P1 = 19 s, P99 = 123 s).
+    dist_divest: ServiceTimeDistribution = LognormalService(mean_s=52.5, sigma_log=0.40)
+    # Rayos X: el tiempo es POR BANDEJA, no por pasajero. Muy poco variable.
+    dist_screening_per_tray: ServiceTimeDistribution = GammaService(mean_s=12.5, cv=0.25)
+    # Bandejas por pasajero: 1, 2 o 3. Media 1,55.
+    trays_per_pax_probs: tuple[float, ...] = (0.55, 0.35, 0.10)
     dist_secondary: ServiceTimeDistribution = GammaService(mean_s=75.0, cv=0.50)
-    dist_recompose: ServiceTimeDistribution = GammaService(mean_s=45.0, cv=0.50)
+    # Recomposición: 30 s (mín) / 60-90 s (media). Es el cuello de botella real.
+    dist_recompose: ServiceTimeDistribution = LognormalService(mean_s=75.0, sigma_log=0.40)
     dist_passport_abc: ServiceTimeDistribution = GammaService(mean_s=18.0, cv=0.30)
     dist_passport_manual: ServiceTimeDistribution = LognormalService(mean_s=28.0, sigma_log=0.40)
 
@@ -535,9 +549,27 @@ class TerminalConfig:
         return SECONDS_PER_HOUR / self.arrival_rate_pax_h
 
     @property
+    def mean_trays_per_pax(self) -> float:
+        return sum((i + 1) * p for i, p in enumerate(self.trays_per_pax_probs))
+
+    @property
     def theoretical_lane_throughput_pax_h(self) -> float:
-        """Caudal teórico por línea, fijado por el arco/RX."""
-        return SECONDS_PER_HOUR / self.dist_screening.theoretical_mean()
+        """
+        Caudal teórico por ARCO, fijado por el tiempo de banda de rayos X.
+
+            Theta = 3600 / (bandejas_por_pax * t_bandeja)
+
+        Con 1,55 bandejas/pax y 12,5 s/bandeja: 186 pax/h por arco, dentro del
+        rango de industria de 150-200 pax/h.
+        """
+        return SECONDS_PER_HOUR / (self.mean_trays_per_pax
+                                   * self.dist_screening_per_tray.theoretical_mean())
+
+    @property
+    def recompose_throughput_pax_h(self) -> float:
+        """Caudal de la zona de recomposición por arco. Debe superar al arco."""
+        return (self.recompose_positions_per_lane * SECONDS_PER_HOUR
+                / self.dist_recompose.theoretical_mean())
 
     def with_closure(self, closures: Mapping[ZoneKey, float]) -> "TerminalConfig":
         """Devuelve una copia con clausuras parciales aplicadas por zona."""
@@ -558,6 +590,7 @@ class PassengerRecord:
     uses_check_in: bool
     passport_route: PassportRoute = PassportRoute.NOT_APPLICABLE
     secondary_search: bool = False
+    n_trays: int = 0
 
     t_arrival_s: Seconds = 0.0
     t_exit_s: Seconds = 0.0
@@ -592,6 +625,7 @@ class PassengerRecord:
             "uses_check_in": self.uses_check_in,
             "passport_route": self.passport_route.value,
             "secondary_search": self.secondary_search,
+            "n_trays": self.n_trays,
             "t_arrival_min": self.t_arrival_s / m,
             "t_exit_min": self.t_exit_s / m,
             "wait_check_in_min": self.wait_check_in_s / m,
@@ -655,6 +689,9 @@ class AirportTerminalModel:
             self.env, capacity=config.n_security_lanes)
         self.recompose_positions: Final[simpy.Resource] = simpy.Resource(
             self.env, capacity=config.n_security_lanes * config.recompose_positions_per_lane)
+        self.secondary_positions: Final[simpy.Resource] = simpy.Resource(
+            self.env, capacity=max(1, int(config.n_security_lanes
+                                          * config.secondary_positions_per_lane)))
         self.abc_gates: Final[simpy.Resource] = simpy.Resource(
             self.env, capacity=config.n_abc_gates)
         self.manual_booths: Final[simpy.Resource] = simpy.Resource(
@@ -783,12 +820,25 @@ class AirportTerminalModel:
                 z_screen.confirm_entry()
                 yield z_divest.leave()
 
-                screen_time = cfg.dist_screening.sample(st.screening)
-                if st.secondary.random() < cfg.p_secondary_search:
-                    rec.secondary_search = True
-                    screen_time += cfg.dist_secondary.sample(st.secondary)
+                # El arco/RX procesa BANDEJAS. El tiempo del pasajero es la
+                # suma de los tiempos de sus bandejas.
+                n_trays = 1 + int(st.screening.choice(
+                    len(cfg.trays_per_pax_probs), p=cfg.trays_per_pax_probs))
+                screen_time = sum(cfg.dist_screening_per_tray.sample(st.screening)
+                                  for _ in range(n_trays))
+                rec.n_trays = n_trays
+                rec.secondary_search = bool(
+                    st.secondary.random() < cfg.p_secondary_search)
                 rec.service_security_s += screen_time
                 yield env.timeout(screen_time)
+
+        # --- Registro secundario: mesa lateral, con el arco ya liberado ------
+        if rec.secondary_search:
+            with self.secondary_positions.request() as req_sec:
+                yield req_sec
+                extra = cfg.dist_secondary.sample(st.secondary)
+                rec.service_security_s += extra
+                yield env.timeout(extra)
 
         # --- Z4: recomposición. Fuera del bloque de línea: el arco queda libre
         #     para el siguiente pasajero, pero la zona sigue ocupada. ---------

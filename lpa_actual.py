@@ -272,11 +272,10 @@ def security_zone_layout(total_area_m2: SquareMeters) -> tuple[ZoneSpec, ...]:
 
 def config_lpa_2018(
     security_area_m2: SquareMeters = 900.0,
-    n_lanes: int = TOTAL_DOUBLE_LANES,
+    n_arcos: int = TOTAL_INSPECTION_UNITS,
     n_check_in_desks: int = TOTAL_CHECKIN_DESKS,
     pax_php: float = float(PHP_2018.departures),
     n_passengers: int = 2684,
-    lane_service_s: float = 15.0,
     scenario_name: Optional[str] = None,
 ) -> TerminalConfig:
     """
@@ -284,7 +283,9 @@ def config_lpa_2018(
 
     Valores por defecto, todos trazables salvo donde se indica:
       * 110 mostradores de facturación (TFM, suma de las cuatro zonas).
-      * 10 filtros dobles / 20 unidades de inspección (TFM).
+      * 20 unidades de inspección = 10 filtros dobles (TFM). El modelo cuenta
+        ARCOS: n_arcos = 20. Confundir filtros con arcos fue el origen del
+        factor 2,2 de discrepancia detectado en el primer contraste.
       * 8 puestos de control de pasaportes en planta 1 (TFM).
       * 2.684 pax/h de salidas en hora punta (TFM, datos 2018).
       * Tiempo de facturación 76 s (UE, el tráfico dominante).
@@ -295,16 +296,16 @@ def config_lpa_2018(
 
     return TerminalConfig(
         scenario_name=scenario_name or (
-            f"LPA 2018 — {n_lanes} filtros, {security_area_m2:.0f} m2 de filtro"),
+            f"LPA 2018 — {n_arcos} arcos ({n_arcos//2} filtros dobles), "
+            f"{security_area_m2:.0f} m2"),
         n_check_in_desks=n_check_in_desks,
-        n_security_lanes=n_lanes,
+        n_security_lanes=n_arcos,   # ARCOS, no filtros
         n_abc_gates=4,
         n_manual_booths=PASSPORT_BOOTHS_P1 - 4,
         zones=security_zone_layout(security_area_m2),
         p_schengen=p_schengen,
         p_uses_check_in=0.55,   # hipótesis: no publicada en ninguna fuente
         dist_check_in=LognormalService(mean_s=CHECKIN_SERVICE_S["UE"], sigma_log=0.45),
-        dist_screening=GammaService(mean_s=lane_service_s, cv=0.30),
         dist_passport_abc=GammaService(mean_s=PASSPORT_SERVICE_S, cv=0.30),
         dist_passport_manual=LognormalService(mean_s=PASSPORT_SERVICE_S * 2.5,
                                               sigma_log=0.40),
